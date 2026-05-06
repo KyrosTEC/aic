@@ -1,0 +1,39 @@
+aic/
+├── my_policy_node/              # goes into Docker image
+│   ├── my_policy_node/
+│   │   ├── FirstPolicy.py
+│   │   ├── __init__.py
+│   │   └── ppo_insert_policy.zip
+│   ├── package.xml
+│   ├── setup.py
+│   └── pixi.toml
+│
+├── training/                    # does NOT go into Docker image
+│   ├── ppo_env.py
+│   ├── ros_interface.py
+│   ├── train_ppo.py
+│   ├── logs/
+│   └── checkpoints/
+│
+└── docker/
+    └── my_policy/
+        └── Dockerfile
+
+
+
+TESTING:
+
+Terminal 1
+    distrobox enter -r aic_eval -- /entrypoint.sh ground_truth:=false start_aic_engine:=true
+Terminal 2
+    cd ~/ws_aic/src/aic
+    pixi run ros2 run aic_model aic_model --ros-args -p use_sim_time:=true -p policy:=my_policy_node.FirstPolicy
+
+
+TRAINING
+
+Terminal 1
+    distrobox enter -r aic_eval -- /entrypoint.sh ground_truth:=true start_aic_engine:=false
+Terminal 2
+    cd ~/ws_aic/src/aic
+    pixi run python training/train_ppo.py
