@@ -80,6 +80,13 @@ class FirstPolicy(Policy):
         p.position.z += dz
         return p
 
+    def _pose_with_offset_negative(self, base: Pose, dx: float, dy: float, dz: float) -> Pose:
+        p = self._copy_pose(base)
+        p.position.x -= dx
+        p.position.y -= dy
+        p.position.z -= dz
+        return p
+
     def _force_norm(self, obs: Observation) -> float:
         try:
             f = obs.wrist_wrench.wrench.force
@@ -120,7 +127,7 @@ class FirstPolicy(Policy):
         Returns False if force got too high and we backed off.
         """
         depth = 0.0
-        last_pose = self._pose_with_offset(base_pose, dx, dy, 0.0)
+        last_pose = self._pose_with_offset_negative(base_pose, dx, dy, 0.0)
 
         while depth > -max_depth:
             obs = get_observation()
@@ -135,7 +142,7 @@ class FirstPolicy(Policy):
                 )
                 # Back off upward by 5 mm and stop this attempt.
                 backoff = self._copy_pose(last_pose)
-                backoff.position.z += 0.005
+                backoff.position.z -= 0.005
                 self._move_and_wait(
                     move_robot,
                     backoff,
@@ -145,7 +152,7 @@ class FirstPolicy(Policy):
                 )
                 return False
 
-            last_pose = self._pose_with_offset(base_pose, dx, dy, depth)
+            last_pose = self._pose_with_offset_negative(base_pose, dx, dy, depth)
             self._move_and_wait(
                 move_robot,
                 last_pose,
@@ -183,7 +190,7 @@ class FirstPolicy(Policy):
         # Keep final pose near the best attempted insertion, do NOT return to start.
 
         # 1) Stabilize / slight lift to reduce accidental contact before searching.
-        safe_pose = self._pose_with_offset(start_pose, 0.0, 0.0, 0.010)
+        safe_pose = self._pose_with_offset_negative(start_pose, 0.0, 0.0, 0.010)
         send_feedback("Stage 1: stabilize above start pose")
         for _ in range(8):
             self._move_and_wait(
@@ -198,9 +205,9 @@ class FirstPolicy(Policy):
         # These values are intentionally small because the start is already close.
         search_offsets = [
             (0.000, 0.000),
-            (0.004, 0.000), (-0.004, 0.000), (0.000, 0.004), (0.000, -0.004),
-            (0.006, 0.006), (-0.006, 0.006), (0.006, -0.006), (-0.006, -0.006),
-            (0.010, 0.000), (-0.010, 0.000), (0.000, 0.010), (0.000, -0.010),
+            (0.04, 0.000), (-0.04, 0.000), (0.000, 0.04), (0.000, -0.04),
+            (0.06, 0.06), (-0.06, 0.06), (0.06, -0.06), (-0.06, -0.06),
+            (0.10, 0.000), (-0.10, 0.000), (0.000, 0.10), (0.000, -0.10),
         ]
 
         # SFP tends to need slightly smaller motions; SC can tolerate a bit more.
@@ -208,7 +215,7 @@ class FirstPolicy(Policy):
         port_name = str(getattr(task, "port_name", "")).lower()
         is_sc = ("sc" in plug_name) or ("sc" in port_name)
 
-        max_depth = 0.045 if is_sc else 0.035
+        max_depth = 0.45 if is_sc else 0.35
         step = 0.0012
 
         send_feedback(
@@ -225,7 +232,7 @@ class FirstPolicy(Policy):
             force = self._force_norm(obs)
             if force > self.force_stop_n:
                 send_feedback(f"High force before search {idx}: {force:.1f} N; lifting")
-                lift = self._pose_with_offset(safe_pose, dx, dy, 0.008)
+                lift = self._pose_with_offset_negative(safe_pose, dx, dy, 0.008)
                 self._move_and_wait(
                     move_robot,
                     lift,
@@ -238,7 +245,7 @@ class FirstPolicy(Policy):
             send_feedback(f"Search {idx}: dx={dx:.3f}, dy={dy:.3f}")
 
             # Move above this search offset first.
-            above = self._pose_with_offset(safe_pose, dx, dy, 0.0)
+            above = self._pose_with_offset_negative(safe_pose, dx, dy, 0.0)
             self._move_and_wait(
                 move_robot,
                 above,
@@ -260,7 +267,7 @@ class FirstPolicy(Policy):
             )
 
             # Keep track of a useful final pose. If we reached depth, stay there.
-            best_final_pose = self._pose_with_offset(safe_pose, dx, dy, -max_depth)
+            best_final_pose = self._pose_with_offset_negative(safe_pose, dx, dy, -max_depth)
             if reached_depth:
                 send_feedback(f"Reached full insertion depth at search {idx}; holding pose")
                 break
@@ -271,7 +278,7 @@ class FirstPolicy(Policy):
             obs = get_observation()
             if obs is not None and self._force_norm(obs) > self.force_stop_n:
                 # Tiny backoff if force rises during hold.
-                best_final_pose.position.z += 0.002
+                best_final_pose.position.z -= 0.002
             self._move_and_wait(
                 move_robot,
                 best_final_pose,
