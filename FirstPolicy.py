@@ -142,7 +142,7 @@ class FirstPolicy(Policy):
                 )
                 # Force exceeded threshold: back off upward by 5 mm and abort this insertion attempt.
                 backoff = self._copy_pose(last_pose)
-                backoff.position.z -= 0.005
+                backoff.position.z -= 0.002
                 self._move_and_wait(
                     move_robot,
                     backoff,
@@ -219,11 +219,14 @@ class FirstPolicy(Policy):
         # SFP tends to need slightly smaller motions; SC can tolerate a bit more.
         plug_name = str(getattr(task, "plug_name", "")).lower()
         port_name = str(getattr(task, "port_name", "")).lower()
+        target_module_name = str(getattr(task, "target_module_name", "")).lower()
         is_sc = ("sc" in plug_name) or ("sc" in port_name)
+        is_task2 = "nic_card_mount_1" in target_module_name
+        
 
         # SC goes much deeper (1.5 m) than SFP (0.35 m) because the connector is longer.
         max_depth = 1.5 if is_sc else 0.35
-        step = 0.0012
+        step = 0.0008
 
         send_feedback(
             f"Stage 2: local search + insertion attempts; is_sc={is_sc}, max_depth={max_depth:.3f}"
@@ -231,10 +234,16 @@ class FirstPolicy(Policy):
 
         search_base_pose = safe_pose
         if is_sc:
-            sc_shift_x = -0.1
-            sc_shift_y = 0.1
+            sc_shift_x = -0.105
+            sc_shift_y = 0.09
             send_feedback(f"SC special: shifting search base by +X {sc_shift_x:.3f} m, +Y {sc_shift_y:.3f} m")
-            search_base_pose = self._pose_with_offset(safe_pose, sc_shift_x, sc_shift_y, -0.2)
+            search_base_pose = self._pose_with_offset(safe_pose, sc_shift_x, sc_shift_y, -0.18)
+        
+        if is_task2:
+            task2_shift_x = 0.0
+            task2_shift_y = 0.035
+            send_feedback(f"Task 2 special: shifting search base by +X {task2_shift_x:.3f} m, +Y {task2_shift_y:.3f} m")
+            search_base_pose = self._pose_with_offset(safe_pose, task2_shift_x, task2_shift_y, 0.0)
 
         best_final_pose = self._copy_pose(search_base_pose)
         for idx, (dx, dy) in enumerate(search_offsets):
@@ -266,7 +275,7 @@ class FirstPolicy(Policy):
             self._move_and_wait(
                 move_robot,
                 above,
-                wait_s=0.25,
+                wait_s=0.15,
                 stiffness=self.free_space_stiffness,
                 damping=self.free_space_damping,
             )
@@ -319,7 +328,7 @@ class FirstPolicy(Policy):
             self._move_and_wait(
                 move_robot,
                 best_final_pose,
-                wait_s=0.5,
+                wait_s=0.15,
                 stiffness=self.insert_stiffness,
                 damping=self.insert_damping,
             )
